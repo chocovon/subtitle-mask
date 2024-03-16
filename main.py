@@ -1,9 +1,9 @@
 import tkinter as tk
 from tkinter import ttk
 
-import keyboard
 
 from helper.blur_helper import blur_top_level
+from helper.keyboard_helper import KeyboardHelper
 from helper.local_config import LocalConfig
 from helper.mouse_move_monitor import MouseMoveMonitor
 
@@ -12,7 +12,7 @@ class FloatingWindow:
     def __init__(self, master):
         self.master = master
         self.top_level = top_level = tk.Toplevel(master)
-        self.show = True
+        self.showing = True
         self.config = LocalConfig()
         self.default_color = self.top_level.cget('background')
         self.mouse_move_monitor = MouseMoveMonitor()
@@ -30,7 +30,9 @@ class FloatingWindow:
         top_level.bind('<B1-Motion>', self.dragging)
         top_level.bind('<Button-1>', self.on_mouse_down)
         top_level.bind("<ButtonRelease-1>", self.on_mouse_release)
-        keyboard.on_press(self.on_key_press)
+        keyboard_helper = KeyboardHelper()
+        keyboard_helper.register_key_press(self.on_key_press)
+        keyboard_helper.register_key_release(self.on_key_release)
 
         self.grip = ttk.Sizegrip(self.top_level)
 
@@ -39,7 +41,7 @@ class FloatingWindow:
 
         self.close_button = tk.Button(top_level, text="×", command=self.terminate, borderwidth=0)
 
-        self.hint = tk.Label(top_level, text="Press [-] to hide / show.")
+        self.hint = tk.Label(top_level, text="Hold [Ctrl] or press [-] to hide / show.")
 
         if self.config.first_open:
             self.show_hints(init=True)
@@ -56,16 +58,30 @@ class FloatingWindow:
         self.mouse_move_monitor.disable()
 
     def toggle(self):
-        if self.show:
-            self.top_level.attributes('-alpha', 0)
-            self.show = False
+        if self.showing:
+            self.hide()
         else:
+            self.show()
+
+    def show(self):
+        if not self.showing:
             self.top_level.attributes('-alpha', 1)
-            self.show = True
+            self.showing = True
+
+    def hide(self):
+        if self.showing:
+            self.top_level.attributes('-alpha', 0)
+            self.showing = False
 
     def on_key_press(self, e):
         if e.name == '-':
             self.toggle()
+        if 'ctrl' in e.name:
+            self.hide()
+
+    def on_key_release(self, e):
+        if 'ctrl' in e.name:
+            self.show()
 
     def on_mouse_release(self, _):
         geo_obj = {'x': self.top_level.winfo_x(),
