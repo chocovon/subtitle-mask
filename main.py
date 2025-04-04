@@ -23,7 +23,7 @@ class FloatingWindow:
         top_level.wm_attributes("-topmost", 1)
         top_level.overrideredirect(True)
 
-        top_level.wm_geometry(self.get_geo_str())
+        top_level.wm_geometry(self.config.get_geo_str())
 
         top_level.minsize(100, 30)
 
@@ -42,9 +42,15 @@ class FloatingWindow:
         self.close_button = tk.Button(top_level, text="×", command=self.terminate, borderwidth=0)
 
         self.hint = tk.Label(top_level, text="Hold [Ctrl] or press [-] to hide / show.")
+        self.need_blur_cb_var = tk.BooleanVar(value=self.config.window_data.need_blur)
+        self.need_blur_cb = tk.Checkbutton(top_level, text="Blur mask",
+                                           variable=self.need_blur_cb_var,
+                                           command=self.on_need_blur_changed)
 
         if self.config.first_open:
             self.show_hints(init=True)
+        else:
+            self.blur()
 
     def dragging(self, event):
         top_level = self.top_level
@@ -88,37 +94,30 @@ class FloatingWindow:
                    'y': self.top_level.winfo_y(),
                    'width': self.top_level.winfo_width(),
                    'height': self.top_level.winfo_height()}
-        self.save_geo(geo_obj)
+        self.config.save_geo(geo_obj)
         self.update_mouse_monitor_region()
         self.mouse_move_monitor.enable()
+
+    def on_need_blur_changed(self):
+        self.config.save_need_blur(self.need_blur_cb_var.get())
 
     def terminate(self):
         self.master.quit()
         quit()
 
-    def get_geo_str(self):
-        geo = self.config.get_window_data()
-        x = str(geo['x'])
-        y = str(geo['y'])
-        width = str(geo['width'])
-        height = str(geo['height'])
-        return width + 'x' + height + '+' + x + '+' + y
-
-    def save_geo(self, geo_obj):
-        self.config.save_window_data(geo_obj)
-
     def update_mouse_monitor_region(self):
-        geo = self.config.get_window_data()
-        x = geo['x']
-        y = geo['y']
-        width = geo['width']
-        height = geo['height']
+        wd = self.config.window_data
+        x = wd.x
+        y = wd.y
+        width = wd.width
+        height = wd.height
         self.mouse_move_monitor.update_region(x, x + width, y, y + height)
 
     def show_hints(self, init=False):
         self.close_button.pack(side="top", anchor="ne")
         self.grip.pack(side="bottom", anchor="se")
         self.hint.pack(anchor="center")
+        self.need_blur_cb.pack(anchor="center")
         if not init:
             self.no_blur()
 
@@ -126,10 +125,12 @@ class FloatingWindow:
         self.close_button.pack_forget()
         self.grip.pack_forget()
         self.hint.pack_forget()
+        self.need_blur_cb.pack_forget()
         self.blur()
 
     def blur(self):
-        blur_top_level(self.top_level)
+        if self.need_blur_cb_var.get():
+            blur_top_level(self.top_level)
 
     def no_blur(self):
         self.top_level.config(bg=self.default_color)
