@@ -52,6 +52,8 @@ class FloatingWindow:
         else:
             self.blur()
 
+        self.top_level.after(300, self.refresh_topmost)
+
     def dragging(self, event):
         top_level = self.top_level
         x = event.x - self.lastClickX + top_level.winfo_x()
@@ -134,6 +136,11 @@ class FloatingWindow:
 
     def no_blur(self):
         self.top_level.config(bg=self.default_color)
+
+    def refresh_topmost(self):
+        self.top_level.lift()  # 提升到顶层
+        self.top_level.attributes('-topmost', True)
+        self.top_level.after(300, self.refresh_topmost)
 
 
 class RootWindow:
