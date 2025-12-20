@@ -10,6 +10,10 @@ class WindowData:
         self.width = 800
         self.height = 100
         self.need_blur = True
+        self.hotkeys = {
+            'toggle': '-',
+            'hold_to_hide': 'ctrl'
+        }
 
     def load(self):
         try:
@@ -20,9 +24,11 @@ class WindowData:
                 self.width = raw_window_data['width']
                 self.height = raw_window_data['height']
                 self.need_blur = raw_window_data['need_blur']
+                if 'hotkeys' in raw_window_data:
+                    self.hotkeys.update(raw_window_data['hotkeys'])
                 print(raw_window_data)
                 return True
-        except FileNotFoundError:
+        except (FileNotFoundError, KeyError):
             return False
 
     def save(self):
@@ -46,6 +52,10 @@ class LocalConfig:
 
     def save_need_blur(self, need_blur):
         self.window_data.need_blur = need_blur
+        self.window_data.save()
+
+    def save_hotkey(self, key_type, key_name):
+        self.window_data.hotkeys[key_type] = key_name
         self.window_data.save()
 
     def get_geo_str(self):

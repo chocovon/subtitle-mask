@@ -1,5 +1,5 @@
 set "projectName=Subtitle Mask"
-set "versionNumber=1.2.1"
+set "versionNumber=1.3.0"
 
 pyinstaller -w -D --name "%projectName%" main.py
 

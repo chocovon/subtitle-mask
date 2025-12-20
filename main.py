@@ -7,6 +7,8 @@ from helper.keyboard_helper import KeyboardHelper
 from helper.local_config import LocalConfig
 from helper.mouse_move_monitor import MouseMoveMonitor
 
+MODIFIER_KEYS = ['ctrl', 'shift', 'alt', 'cmd', 'win']
+
 
 class FloatingWindow:
     def __init__(self, master):
@@ -14,6 +16,13 @@ class FloatingWindow:
         self.top_level = top_level = tk.Toplevel(master)
         self.showing = True
         self.config = LocalConfig()
+
+        self.hold_to_hide_hotkey = self.config.window_data.hotkeys['hold_to_hide']
+        self.toggle_hotkey = self.config.window_data.hotkeys['toggle']
+        self.hotkey_to_set = None
+        self.active_hotkey_btn = None
+        self.original_btn_text = None
+
         self.default_color = self.top_level.cget('background')
         self.mouse_move_monitor = MouseMoveMonitor()
         self.mouse_move_monitor.register_on_enter(self.show_hints)
@@ -41,7 +50,19 @@ class FloatingWindow:
 
         self.close_button = tk.Button(top_level, text="×", command=self.terminate, borderwidth=0)
 
-        self.hint = tk.Label(top_level, text="Hold [Ctrl] or press [-] to hide / show.")
+        self.hint_frame = tk.Frame(top_level)
+        tk.Label(self.hint_frame, text="Hold").pack(side='left')
+        self.hold_key_btn = tk.Button(self.hint_frame, text=f"[{self.hold_to_hide_hotkey}]",
+                                      command=lambda: self.start_hotkey_setup('hold_to_hide'), borderwidth=0,
+                                      cursor="hand2")
+        self.hold_key_btn.pack(side='left')
+        tk.Label(self.hint_frame, text="or press").pack(side='left')
+        self.toggle_key_btn = tk.Button(self.hint_frame, text=f"[{self.toggle_hotkey}]",
+                                        command=lambda: self.start_hotkey_setup('toggle'), borderwidth=0,
+                                        cursor="hand2")
+        self.toggle_key_btn.pack(side='left')
+        tk.Label(self.hint_frame, text="to hide / show.").pack(side='left')
+
         self.need_blur_cb_var = tk.BooleanVar(value=self.config.window_data.need_blur)
         self.need_blur_cb = tk.Checkbutton(top_level, text="Blur mask",
                                            variable=self.need_blur_cb_var,
@@ -61,6 +82,8 @@ class FloatingWindow:
         top_level.geometry("+%s+%s" % (x, y))
 
     def on_mouse_down(self, event):
+        if self.hotkey_to_set:
+            self.cancel_hotkey_setup()
         self.lastClickX = event.x
         self.lastClickY = event.y
         self.mouse_move_monitor.disable()
@@ -81,14 +104,23 @@ class FloatingWindow:
             self.top_level.attributes('-alpha', 0)
             self.showing = False
 
+    def _is_hotkey_pressed(self, event_name, hotkey_name):
+        if hotkey_name in MODIFIER_KEYS:
+            return hotkey_name in event_name
+        return event_name == hotkey_name
+
     def on_key_press(self, e):
-        if e.name == '-':
+        if self.hotkey_to_set:
+            self.set_hotkey(e)
+            return
+
+        if self._is_hotkey_pressed(e.name, self.toggle_hotkey):
             self.toggle()
-        if 'ctrl' in e.name:
+        if self._is_hotkey_pressed(e.name, self.hold_to_hide_hotkey):
             self.hide()
 
     def on_key_release(self, e):
-        if 'ctrl' in e.name:
+        if self._is_hotkey_pressed(e.name, self.hold_to_hide_hotkey):
             self.show()
 
     def on_mouse_release(self, _):
@@ -102,6 +134,59 @@ class FloatingWindow:
 
     def on_need_blur_changed(self):
         self.config.save_need_blur(self.need_blur_cb_var.get())
+
+    def start_hotkey_setup(self, hotkey_type):
+        # Cancel if already setting another key, restore its text
+        if self.hotkey_to_set:
+            self.cancel_hotkey_setup()
+
+        self.hotkey_to_set = hotkey_type
+        if hotkey_type == 'hold_to_hide':
+            self.active_hotkey_btn = self.hold_key_btn
+            self.original_btn_text = f"[{self.hold_to_hide_hotkey}]"
+        else:  # 'toggle'
+            self.active_hotkey_btn = self.toggle_key_btn
+            self.original_btn_text = f"[{self.toggle_hotkey}]"
+
+        self.active_hotkey_btn.config(text="Press a key...")
+
+    def cancel_hotkey_setup(self):
+        if not self.hotkey_to_set:
+            return
+
+        self.active_hotkey_btn.config(text=self.original_btn_text)
+        self.hotkey_to_set = None
+        self.active_hotkey_btn = None
+        self.original_btn_text = None
+
+    def set_hotkey(self, event):
+        key_name = event.name
+        hotkey_type = self.hotkey_to_set
+
+        if key_name == 'esc':
+            self.cancel_hotkey_setup()
+            return
+
+        # Normalize modifier keys
+        for mod in MODIFIER_KEYS:
+            if mod in key_name:
+                key_name = mod
+                break
+
+        # Check for conflicts
+        if (hotkey_type == 'hold_to_hide' and key_name == self.toggle_hotkey) or \
+           (hotkey_type == 'toggle' and key_name == self.hold_to_hide_hotkey):
+            self.cancel_hotkey_setup()
+            return
+
+        if hotkey_type == 'hold_to_hide':
+            self.hold_to_hide_hotkey = key_name
+        else:  # 'toggle'
+            self.toggle_hotkey = key_name
+
+        self.config.save_hotkey(hotkey_type, key_name)
+        self.active_hotkey_btn.config(text=f"[{key_name}]")
+        self.hotkey_to_set = None
 
     def terminate(self):
         self.master.quit()
@@ -118,7 +203,7 @@ class FloatingWindow:
     def show_hints(self, init=False):
         self.close_button.pack(side="top", anchor="ne")
         self.grip.pack(side="bottom", anchor="se")
-        self.hint.pack(anchor="center")
+        self.hint_frame.pack(anchor="center")
         self.need_blur_cb.pack(anchor="center")
         if not init:
             self.no_blur()
@@ -126,7 +211,7 @@ class FloatingWindow:
     def hide_hints(self):
         self.close_button.pack_forget()
         self.grip.pack_forget()
-        self.hint.pack_forget()
+        self.hint_frame.pack_forget()
         self.need_blur_cb.pack_forget()
         self.blur()
 
